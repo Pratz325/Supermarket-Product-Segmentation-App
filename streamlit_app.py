@@ -17,8 +17,7 @@ def load_model():
     # Load the checkpoint
     checkpoint = torch.load("model_weights.pth", map_location=device)
     
-    # Get number of classes from checkpoint if available
-    # Otherwise, change this manually
+    # Get number of classes
     num_classes = 61
     
     # Create base model
@@ -33,13 +32,35 @@ def load_model():
     hidden_layer = 256
     model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
     
-    # Load state dict
+    # Load weights - handle both checkpoint formats
     try:
-        model.load_state_dict(checkpoint['model_state_dict'])
-        st.write("Loaded model with exact architecture match")
+        if isinstance(checkpoint, dict):
+            if 'model_state_dict' in checkpoint:
+                # Checkpoint is a dictionary with 'model_state_dict' key
+                model.load_state_dict(checkpoint['model_state_dict'])
+                epoch = checkpoint.get('epoch', 'unknown')
+                st.success(f"✅ Loaded model from epoch {epoch}")
+            else:
+                # Checkpoint is a dict but not in expected format
+                # Try loading it directly
+                model.load_state_dict(checkpoint)
+                st.success("✅ Loaded model weights!")
+        else:
+            # Checkpoint is directly the state_dict (OrderedDict)
+            model.load_state_dict(checkpoint)
+            st.success("✅ Loaded model weights successfully!")
     except Exception as e:
-        st.warning(f"Loading with strict=False due to: {str(e)[:100]}")
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        st.error(f"❌ Error loading weights: {str(e)}")
+        st.warning("Attempting to load with strict=False...")
+        try:
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            else:
+                model.load_state_dict(checkpoint, strict=False)
+            st.success("⚠️ Loaded with strict=False (some weights may be missing)")
+        except Exception as e2:
+            st.error(f"❌ Failed to load model: {str(e2)}")
+            raise
     
     model.to(device)
     model.eval()
